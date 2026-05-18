@@ -1,0 +1,18 @@
+{
+  "short_name": "Shopping CR",
+  "name": "Shopping Agent Costa Rica",
+  "description": "Servicio de compras en el extranjero · Costa Rica",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#302b63",
+  "background_color": "#f0f2ff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
