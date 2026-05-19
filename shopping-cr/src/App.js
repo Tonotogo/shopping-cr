@@ -33,12 +33,12 @@ async function callGroq(systemPrompt, userPrompt) {
 const SYSTEM = `You are an Amazon USA product expert. Always respond with ONLY valid JSON — no markdown fences, no explanation, just raw JSON.
 
 For product searches use exactly:
-{"productos":[{"nombre":"Full product name","marca":"Brand","emoji":"emoji","descripcion":"Short description in Spanish 1-2 sentences","caracteristicas":["feature1","feature2","feature3","feature4"],"precio_usd_base":99.99,"calificacion":4.5,"num_resenas":12000,"imagen_query":"brand model keywords","categoria":"category"}]}
+{"productos":[{"nombre":"Full product name including brand and model","nombre_simple":"Generic article name only, no brand or model (e.g. 'Audífonos inalámbricos', 'Cafetera espresso', 'Smartphone')","marca":"Brand","emoji":"emoji","descripcion":"Short description in Spanish 1-2 sentences","caracteristicas":["feature1","feature2","feature3","feature4"],"precio_usd_base":99.99,"calificacion":4.5,"num_resenas":12000,"imagen_query":"brand model specific keywords for image search","categoria":"category","amazon_url":"https://www.amazon.com/s?k=brand+model+name"}]}
 
 For single product links use exactly:
-{"nombre":"Full product name","marca":"Brand","emoji":"emoji","descripcion":"Short description in Spanish","caracteristicas":["f1","f2","f3","f4"],"precio_usd_base":99.99,"calificacion":4.5,"num_resenas":1000,"imagen_query":"brand model keywords","categoria":"category"}
+{"nombre":"Full product name","nombre_simple":"Generic article name only, no brand or model","marca":"Brand","emoji":"emoji","descripcion":"Short description in Spanish","caracteristicas":["f1","f2","f3","f4"],"precio_usd_base":99.99,"calificacion":4.5,"num_resenas":1000,"imagen_query":"brand model specific keywords","categoria":"category","amazon_url":"https://www.amazon.com/s?k=brand+model+name"}
 
-Use realistic current Amazon.com USD prices. No markdown. No backticks. Pure JSON only.`;
+Use realistic current Amazon.com USD prices. For amazon_url use a real search URL or product URL. No markdown. No backticks. Pure JSON only.`;
 
 function extractJSON(text) {
   const attempts = [
@@ -76,8 +76,9 @@ const copy = t => navigator.clipboard.writeText(t);
 
 function buildWA(p, fee, deadline) {
   const total = p.priceUSD + (Number(fee) || 0);
+  const displayName = p.nombre_simple || p.nombre;
   return [
-    `${p.emoji} *${p.nombre}*`, "",
+    `${p.emoji} *${displayName}*`, "",
     p.descripcion, "",
     "📌 *Características:*",
     ...(p.caracteristicas || []).map(c => `   ✅ ${c}`),
@@ -93,11 +94,14 @@ function buildWA(p, fee, deadline) {
 }
 
 // ─── UI Components ────────────────────────────────────────────────────────────
-function Img({ query, size = 82 }) {
+function Img({ query, userQuery, size = 82 }) {
   const [i, setI] = useState(0);
+  // Combine user search query with product-specific query for better image match
+  const combined = userQuery ? `${userQuery} ${query}`.trim() : query;
   const srcs = [
+    `https://source.unsplash.com/featured/${size}x${size}/?${encodeURIComponent(combined)}`,
     `https://source.unsplash.com/featured/${size}x${size}/?${encodeURIComponent(query)}`,
-    `https://loremflickr.com/${size}/${size}/${encodeURIComponent((query || "product").split(" ").slice(0, 2).join(","))}`,
+    `https://loremflickr.com/${size}/${size}/${encodeURIComponent((query || "product").split(" ").slice(0, 3).join(","))}`,
   ];
   if (i >= srcs.length) return (
     <div style={{ width: size, height: size, borderRadius: 10, background: "#f0f2ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.38, flexShrink: 0 }}>📦</div>
@@ -128,17 +132,18 @@ function Loader({ text = "Searching Amazon.com..." }) {
 
 const RANK_COLORS = ["#f1c40f", "#95a5a6", "#cd7f32", "#6c63ff", "#3498db"];
 
-function ProductCard({ p, index, fee, deadline, onAdd }) {
+function ProductCard({ p, index, fee, deadline, onAdd, userQuery }) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const color = RANK_COLORS[index] || "#6c63ff";
+  const displayName = p.nombre_simple || p.nombre;
 
   return (
     <div style={{ background: "white", borderRadius: 14, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", borderLeft: `4px solid ${color}`, animation: `fadeIn 0.35s ease ${index * 70}ms both` }}>
       <div style={{ display: "flex", gap: 12 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: "50%", background: color, color: "white", fontWeight: 800, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>#{index + 1}</div>
-          <Img query={p.imagen_query || p.nombre || "product"} size={82} />
+          <Img query={p.imagen_query || p.nombre} userQuery={userQuery} size={82} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -153,6 +158,15 @@ function ProductCard({ p, index, fee, deadline, onAdd }) {
             <span style={{ color: "#aaa", marginLeft: 5 }}>{p.calificacion} · {(p.num_resenas || 0).toLocaleString()} reviews</span>
           </div>
           <p style={{ fontSize: 13, color: "#666", lineHeight: 1.5, marginBottom: 8 }}>{p.descripcion}</p>
+
+          {/* Amazon link */}
+          {p.amazon_url && (
+            <a href={p.amazon_url} target="_blank" rel="noopener noreferrer"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "#e67e22", fontWeight: 700, textDecoration: "none", background: "#fff8f0", border: "1px solid #fde8c8", borderRadius: 6, padding: "4px 10px", marginBottom: 8 }}>
+              🛒 Ver en Amazon
+            </a>
+          )}
+
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8f9ff", borderRadius: 8, padding: "8px 12px", flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 9, color: "#aaa", textTransform: "uppercase" }}>Amazon base</div>
@@ -184,7 +198,7 @@ function ProductCard({ p, index, fee, deadline, onAdd }) {
           <p style={{ fontSize: 11, fontWeight: 700, color: "#888", textTransform: "uppercase", marginBottom: 6 }}>✅ Características</p>
           <ul style={{ paddingLeft: 16 }}>{(p.caracteristicas || []).map((c, i) => <li key={i} style={{ fontSize: 13, color: "#555", marginBottom: 3 }}>{c}</li>)}</ul>
           <div style={{ marginTop: 12 }}>
-            <p style={{ fontSize: 11, color: "#25D366", fontWeight: 700, marginBottom: 6 }}>📱 Mensaje WhatsApp</p>
+            <p style={{ fontSize: 11, color: "#25D366", fontWeight: 700, marginBottom: 6 }}>📱 Mensaje WhatsApp — <em style={{ fontWeight: 400, color: "#aaa" }}>se envía como "{displayName}"</em></p>
             <div style={{ background: "#e5ddd5", borderRadius: 10, padding: 10 }}>
               <pre style={{ background: "white", borderRadius: 8, padding: 10, fontSize: 12, fontFamily: "inherit", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word", color: "#1a1a2e" }}>{buildWA(p, fee, deadline)}</pre>
             </div>
@@ -241,7 +255,7 @@ function Top5Panel({ margin, fee, deadline, onAdd }) {
             <h3 style={{ fontFamily: "'Sora',sans-serif", color: "#1a1a2e", fontSize: 14 }}>🏆 Top 5: <em style={{ color: "#6c63ff" }}>{label}</em></h3>
             <span style={bdg}>{results.length} productos</span>
           </div>
-          {results.map((p, i) => <ProductCard key={i} p={p} index={i} fee={fee} deadline={deadline} onAdd={onAdd} />)}
+          {results.map((p, i) => <ProductCard key={i} p={p} index={i} fee={fee} deadline={deadline} onAdd={onAdd} userQuery={label} />)}
         </div>
       )}
     </div>
@@ -273,7 +287,7 @@ function LinkPanel({ margin, fee, deadline, onAdd }) {
         {error && <ErrBox msg={error} />}
       </div>
       {loading && <Loader text="Analizando producto..." />}
-      {product && <ProductCard p={product} index={0} fee={fee} deadline={deadline} onAdd={onAdd} />}
+      {product && <ProductCard p={product} index={0} fee={fee} deadline={deadline} onAdd={onAdd} userQuery={url} />}
     </div>
   );
 }
